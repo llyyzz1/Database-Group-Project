@@ -1,0 +1,322 @@
+{
+  "structure": "结构 B · 移除全部外键索引",
+  "queries": {
+    "Q1 门店销售额（经 order_item 汇总）": {
+      "median_ms": 1037.914,
+      "min_ms": 1004.429,
+      "max_ms": 1055.8,
+      "all_ms": [
+        1045.255,
+        1004.429,
+        1033.029,
+        1037.914,
+        1030.584,
+        1055.8,
+        1051.988
+      ],
+      "rows_returned": 20,
+      "tree_plan": "-> Sort: sales_amount DESC\n    -> Table scan on <temporary>\n        -> Aggregate using temporary table\n            -> Nested loop left join  (cost=131e+6 rows=653e+6)\n                -> Left hash join (oi.product_id = p.product_id)  (cost=65.3e+6 rows=653e+6)\n                    -> Left hash join (p.store_id = s.store_id)  (cost=401 rows=4000)\n                        -> Table scan on s  (cost=2.25 rows=20)\n                        -> Hash\n                            -> Table scan on p  (cost=1.01 rows=200)\n                    -> Hash\n                        -> Table scan on oi  (cost=4.23 rows=163203)\n                -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=62.5e-6 rows=1)\n",
+      "explain": [
+        {
+          "table": "s",
+          "type": "ALL",
+          "key": null,
+          "rows": 20,
+          "Extra": "Using temporary; Using filesort"
+        },
+        {
+          "table": "p",
+          "type": "ALL",
+          "key": null,
+          "rows": 200,
+          "Extra": "Using where; Using join buffer (hash join)"
+        },
+        {
+          "table": "oi",
+          "type": "ALL",
+          "key": null,
+          "rows": 163203,
+          "Extra": "Using where; Using join buffer (hash join)"
+        },
+        {
+          "table": "o",
+          "type": "eq_ref",
+          "key": "PRIMARY",
+          "rows": 1,
+          "Extra": null
+        }
+      ]
+    },
+    "Q2 每位骑手配送量（含零单骑手）": {
+      "median_ms": 562.765,
+      "min_ms": 536.275,
+      "max_ms": 614.159,
+      "all_ms": [
+        576.1,
+        536.275,
+        547.791,
+        614.159,
+        578.645,
+        547.773,
+        562.765
+      ],
+      "rows_returned": 200,
+      "tree_plan": "-> Table scan on <temporary>\n    -> Aggregate using temporary table\n        -> Left hash join (o.rider_id = r.rider_id)  (cost=964709 rows=9.65e+6)\n            -> Table scan on r  (cost=20.2 rows=200)\n            -> Hash\n                -> Filter: (o.order_status <> 'cancelled')  (cost=24.6 rows=48229)\n                    -> Table scan on o  (cost=24.6 rows=48229)\n",
+      "explain": [
+        {
+          "table": "r",
+          "type": "ALL",
+          "key": null,
+          "rows": 200,
+          "Extra": "Using temporary"
+        },
+        {
+          "table": "o",
+          "type": "ALL",
+          "key": null,
+          "rows": 48229,
+          "Extra": "Using where; Using join buffer (hash join)"
+        }
+      ]
+    },
+    "Q3 买过指定商品的顾客（子查询版）": {
+      "median_ms": 45.302,
+      "min_ms": 43.147,
+      "max_ms": 50.462,
+      "all_ms": [
+        43.147,
+        45.302,
+        49.251,
+        43.545,
+        44.099,
+        48.173,
+        50.462
+      ],
+      "rows_returned": 2112,
+      "tree_plan": "-> Remove duplicate customer rows using temporary table (weedout)  (cost=27294 rows=14688)\n    -> Nested loop inner join  (cost=27294 rows=14688)\n        -> Nested loop inner join  (cost=22153 rows=14688)\n            -> Filter: (oi.product_id = 1)  (cost=16441 rows=16320)\n                -> Covering index scan on oi using PRIMARY  (cost=16441 rows=163203)\n            -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n        -> Single-row index lookup on customer using PRIMARY (customer_id = o.customer_id)  (cost=0.749 rows=1)\n",
+      "explain": [
+        {
+          "table": "oi",
+          "type": "index",
+          "key": "PRIMARY",
+          "rows": 163203,
+          "Extra": "Using where; Using index; Start temporary"
+        },
+        {
+          "table": "o",
+          "type": "eq_ref",
+          "key": "PRIMARY",
+          "rows": 1,
+          "Extra": "Using where"
+        },
+        {
+          "table": "customer",
+          "type": "eq_ref",
+          "key": "PRIMARY",
+          "rows": 1,
+          "Extra": "End temporary"
+        }
+      ]
+    },
+    "Q3' 买过指定商品的顾客（JOIN 版）": {
+      "median_ms": 49.616,
+      "min_ms": 48.279,
+      "max_ms": 52.283,
+      "all_ms": [
+        48.371,
+        48.928,
+        49.616,
+        48.279,
+        51.638,
+        49.831,
+        52.283
+      ],
+      "rows_returned": 2112,
+      "tree_plan": "-> Table scan on <temporary>  (cost=30678..30864 rows=14688)\n    -> Temporary table with deduplication  (cost=30678..30678 rows=14688)\n        -> Nested loop inner join  (cost=27294 rows=14688)\n            -> Nested loop inner join  (cost=22153 rows=14688)\n                -> Filter: (oi.product_id = 1)  (cost=16441 rows=16320)\n                    -> Covering index scan on oi using PRIMARY  (cost=16441 rows=163203)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n            -> Single-row index lookup on c using PRIMARY (customer_id = o.customer_id)  (cost=0.25 rows=1)\n",
+      "explain": [
+        {
+          "table": "oi",
+          "type": "index",
+          "key": "PRIMARY",
+          "rows": 163203,
+          "Extra": "Using where; Using index; Using temporary"
+        },
+        {
+          "table": "o",
+          "type": "eq_ref",
+          "key": "PRIMARY",
+          "rows": 1,
+          "Extra": "Using where"
+        },
+        {
+          "table": "c",
+          "type": "eq_ref",
+          "key": "PRIMARY",
+          "rows": 1,
+          "Extra": null
+        }
+      ]
+    },
+    "Q4 每位顾客订单数与消费总额": {
+      "median_ms": 220.456,
+      "min_ms": 216.252,
+      "max_ms": 230.93,
+      "all_ms": [
+        216.252,
+        218.115,
+        216.519,
+        228.153,
+        221.745,
+        220.456,
+        230.93
+      ],
+      "rows_returned": 5000,
+      "tree_plan": "-> Table scan on <temporary>\n    -> Aggregate using temporary table\n        -> Left hash join (o.customer_id = c.customer_id)  (cost=23.6e+6 rows=236e+6)\n            -> Table scan on c  (cost=497 rows=4900)\n            -> Hash\n                -> Filter: (o.order_status <> 'cancelled')  (cost=1.06 rows=48229)\n                    -> Table scan on o  (cost=1.06 rows=48229)\n",
+      "explain": [
+        {
+          "table": "c",
+          "type": "ALL",
+          "key": null,
+          "rows": 4900,
+          "Extra": "Using temporary"
+        },
+        {
+          "table": "o",
+          "type": "ALL",
+          "key": null,
+          "rows": 48229,
+          "Extra": "Using where; Using join buffer (hash join)"
+        }
+      ]
+    },
+    "Q5 尚未派单的订单": {
+      "median_ms": 37.793,
+      "min_ms": 34.906,
+      "max_ms": 42.287,
+      "all_ms": [
+        42.287,
+        38.628,
+        37.793,
+        37.106,
+        36.236,
+        34.906,
+        37.868
+      ],
+      "rows_returned": 7507,
+      "tree_plan": "-> Filter: (orders.rider_id is null)  (cost=4911 rows=4823)\n    -> Table scan on orders  (cost=4911 rows=48229)\n",
+      "explain": [
+        {
+          "table": "orders",
+          "type": "ALL",
+          "key": null,
+          "rows": 48229,
+          "Extra": "Using where"
+        }
+      ]
+    }
+  },
+  "indexes": [
+    {
+      "table": "customer",
+      "index": "PRIMARY",
+      "cols": "customer_id"
+    },
+    {
+      "table": "customer",
+      "index": "uq_customer_phone",
+      "cols": "phone"
+    },
+    {
+      "table": "order_item",
+      "index": "PRIMARY",
+      "cols": "order_id,product_id"
+    },
+    {
+      "table": "orders",
+      "index": "PRIMARY",
+      "cols": "order_id"
+    },
+    {
+      "table": "product",
+      "index": "PRIMARY",
+      "cols": "product_id"
+    },
+    {
+      "table": "rider",
+      "index": "PRIMARY",
+      "cols": "rider_id"
+    },
+    {
+      "table": "rider",
+      "index": "uq_rider_phone",
+      "cols": "phone"
+    },
+    {
+      "table": "store",
+      "index": "PRIMARY",
+      "cols": "store_id"
+    },
+    {
+      "table": "store",
+      "index": "uq_store_phone",
+      "cols": "phone"
+    }
+  ],
+  "table_sizes": [
+    {
+      "table": "customer",
+      "data_mb": 0.45,
+      "index_mb": 0.14,
+      "total_mb": 0.59
+    },
+    {
+      "table": "order_item",
+      "data_mb": 7.52,
+      "index_mb": 0.0,
+      "total_mb": 7.52
+    },
+    {
+      "table": "orders",
+      "data_mb": 5.52,
+      "index_mb": 0.0,
+      "total_mb": 5.52
+    },
+    {
+      "table": "product",
+      "data_mb": 0.02,
+      "index_mb": 0.0,
+      "total_mb": 0.02
+    },
+    {
+      "table": "rider",
+      "data_mb": 0.02,
+      "index_mb": 0.02,
+      "total_mb": 0.03
+    },
+    {
+      "table": "store",
+      "data_mb": 0.02,
+      "index_mb": 0.02,
+      "total_mb": 0.03
+    }
+  ],
+  "write_cost": {
+    "median_s": 1.057,
+    "all_s": [
+      1.055,
+      1.096,
+      1.057
+    ],
+    "rows": 150000,
+    "indexes": 1,
+    "index_mb": 0.0
+  },
+  "row_counts": {
+    "store": 20,
+    "product": 200,
+    "customer": 5000,
+    "rider": 200,
+    "orders": 50000,
+    "order_item": 150152
+  }
+}

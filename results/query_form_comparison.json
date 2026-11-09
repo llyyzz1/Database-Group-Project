@@ -1,0 +1,306 @@
+{
+  "A": {
+    "5": {
+      "V1 IN 子查询": {
+        "median": 14.73,
+        "min": 13.375,
+        "max": 16.857,
+        "all": [
+          14.57,
+          13.375,
+          16.857,
+          15.287,
+          14.953,
+          14.73,
+          14.268
+        ],
+        "tree": "-> Nested loop inner join  (cost=115269 rows=3375)\n    -> Table scan on <subquery2>  (cost=2467..2511 rows=3375)\n        -> Materialize with deduplication  (cost=2467..2467 rows=3375)\n            -> Nested loop inner join  (cost=1689 rows=3375)\n                -> Covering index lookup on oi using fk_item_product (product_id = 5)  (cost=377 rows=3750)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112420 rows=1)\n",
+        "rows": 2182
+      },
+      "V2 JOIN + DISTINCT": {
+        "median": 19.806,
+        "min": 18.778,
+        "max": 21.413,
+        "all": [
+          18.778,
+          19.906,
+          21.413,
+          19.406,
+          19.806,
+          19.849,
+          19.082
+        ],
+        "tree": "-> Table scan on <temporary>  (cost=3648..3693 rows=3375)\n    -> Temporary table with deduplication  (cost=3648..3648 rows=3375)\n        -> Nested loop inner join  (cost=2870 rows=3375)\n            -> Nested loop inner join  (cost=1689 rows=3375)\n                -> Covering index lookup on oi using fk_item_product (product_id = 5)  (cost=377 rows=3750)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n            -> Single-row index lookup on c using PRIMARY (customer_id = o.customer_id)  (cost=0.25 rows=1)\n",
+        "rows": 2182
+      },
+      "V3 EXISTS 半连接": {
+        "median": 14.391,
+        "min": 13.712,
+        "max": 15.972,
+        "all": [
+          14.391,
+          15.972,
+          14.414,
+          13.712,
+          14.83,
+          14.264,
+          14.121
+        ],
+        "tree": "-> Nested loop inner join  (cost=115269 rows=3375)\n    -> Table scan on <subquery2>  (cost=2467..2511 rows=3375)\n        -> Materialize with deduplication  (cost=2467..2467 rows=3375)\n            -> Nested loop inner join  (cost=1689 rows=3375)\n                -> Covering index lookup on oi using fk_item_product (product_id = 5)  (cost=377 rows=3750)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112420 rows=1)\n",
+        "rows": 2182
+      }
+    },
+    "96": {
+      "V1 IN 子查询": {
+        "median": 4.242,
+        "min": 3.827,
+        "max": 5.56,
+        "all": [
+          5.56,
+          4.003,
+          4.242,
+          4.496,
+          4.211,
+          3.827,
+          4.39
+        ],
+        "tree": "-> Nested loop inner join  (cost=112866 rows=526)\n    -> Table scan on <subquery2>  (cost=384..393 rows=526)\n        -> Materialize with deduplication  (cost=384..384 rows=526)\n            -> Nested loop inner join  (cost=263 rows=526)\n                -> Covering index lookup on oi using fk_item_product (product_id = 96)  (cost=58.9 rows=584)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112420 rows=1)\n",
+        "rows": 502
+      },
+      "V2 JOIN + DISTINCT": {
+        "median": 4.329,
+        "min": 4.102,
+        "max": 4.873,
+        "all": [
+          4.873,
+          4.329,
+          4.423,
+          4.508,
+          4.188,
+          4.102,
+          4.213
+        ],
+        "tree": "-> Table scan on <temporary>  (cost=568..577 rows=526)\n    -> Temporary table with deduplication  (cost=568..568 rows=526)\n        -> Nested loop inner join  (cost=447 rows=526)\n            -> Nested loop inner join  (cost=263 rows=526)\n                -> Covering index lookup on oi using fk_item_product (product_id = 96)  (cost=58.9 rows=584)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n            -> Single-row index lookup on c using PRIMARY (customer_id = o.customer_id)  (cost=0.25 rows=1)\n",
+        "rows": 502
+      },
+      "V3 EXISTS 半连接": {
+        "median": 4.419,
+        "min": 3.888,
+        "max": 4.742,
+        "all": [
+          4.419,
+          4.564,
+          4.474,
+          4.179,
+          4.742,
+          4.21,
+          3.888
+        ],
+        "tree": "-> Nested loop inner join  (cost=112866 rows=526)\n    -> Table scan on <subquery2>  (cost=384..393 rows=526)\n        -> Materialize with deduplication  (cost=384..384 rows=526)\n            -> Nested loop inner join  (cost=263 rows=526)\n                -> Covering index lookup on oi using fk_item_product (product_id = 96)  (cost=58.9 rows=584)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112420 rows=1)\n",
+        "rows": 502
+      }
+    },
+    "194": {
+      "V1 IN 子查询": {
+        "median": 3.391,
+        "min": 2.827,
+        "max": 3.611,
+        "all": [
+          2.988,
+          2.973,
+          3.611,
+          3.45,
+          3.453,
+          2.827,
+          3.391
+        ],
+        "tree": "-> Nested loop inner join  (cost=10406 rows=361)\n    -> Table scan on <subquery2>  (cost=264..271 rows=361)\n        -> Materialize with deduplication  (cost=264..264 rows=361)\n            -> Nested loop inner join  (cost=181 rows=361)\n                -> Covering index lookup on oi using fk_item_product (product_id = 194)  (cost=40.5 rows=401)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=10099 rows=1)\n",
+        "rows": 340
+      },
+      "V2 JOIN + DISTINCT": {
+        "median": 3.586,
+        "min": 2.979,
+        "max": 3.748,
+        "all": [
+          3.213,
+          3.67,
+          3.246,
+          3.748,
+          2.979,
+          3.586,
+          3.59
+        ],
+        "tree": "-> Table scan on <temporary>  (cost=390..397 rows=361)\n    -> Temporary table with deduplication  (cost=390..390 rows=361)\n        -> Nested loop inner join  (cost=307 rows=361)\n            -> Nested loop inner join  (cost=181 rows=361)\n                -> Covering index lookup on oi using fk_item_product (product_id = 194)  (cost=40.5 rows=401)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n            -> Single-row index lookup on c using PRIMARY (customer_id = o.customer_id)  (cost=0.25 rows=1)\n",
+        "rows": 340
+      },
+      "V3 EXISTS 半连接": {
+        "median": 3.09,
+        "min": 2.763,
+        "max": 3.786,
+        "all": [
+          3.786,
+          2.893,
+          3.09,
+          2.763,
+          3.373,
+          2.989,
+          3.4
+        ],
+        "tree": "-> Nested loop inner join  (cost=10406 rows=361)\n    -> Table scan on <subquery2>  (cost=264..271 rows=361)\n        -> Materialize with deduplication  (cost=264..264 rows=361)\n            -> Nested loop inner join  (cost=181 rows=361)\n                -> Covering index lookup on oi using fk_item_product (product_id = 194)  (cost=40.5 rows=401)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=10099 rows=1)\n",
+        "rows": 340
+      }
+    }
+  },
+  "C": {
+    "5": {
+      "V1 IN 子查询": {
+        "median": 15.027,
+        "min": 14.101,
+        "max": 18.955,
+        "all": [
+          14.355,
+          14.688,
+          18.955,
+          18.663,
+          14.101,
+          15.027,
+          17.971
+        ],
+        "tree": "-> Nested loop inner join  (cost=115004 rows=3375)\n    -> Table scan on <subquery2>  (cost=2470..2514 rows=3375)\n        -> Materialize with deduplication  (cost=2470..2470 rows=3375)\n            -> Nested loop inner join  (cost=1692 rows=3375)\n                -> Covering index lookup on oi using ix_oi_pid_oid (product_id = 5)  (cost=379 rows=3750)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112152 rows=1)\n",
+        "rows": 2182
+      },
+      "V2 JOIN + DISTINCT": {
+        "median": 20.111,
+        "min": 19.008,
+        "max": 20.805,
+        "all": [
+          20.78,
+          19.339,
+          20.805,
+          19.008,
+          19.394,
+          20.562,
+          20.111
+        ],
+        "tree": "-> Table scan on <temporary>  (cost=3651..3695 rows=3375)\n    -> Temporary table with deduplication  (cost=3651..3651 rows=3375)\n        -> Nested loop inner join  (cost=2873 rows=3375)\n            -> Nested loop inner join  (cost=1692 rows=3375)\n                -> Covering index lookup on oi using ix_oi_pid_oid (product_id = 5)  (cost=379 rows=3750)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n            -> Single-row index lookup on c using PRIMARY (customer_id = o.customer_id)  (cost=0.25 rows=1)\n",
+        "rows": 2182
+      },
+      "V3 EXISTS 半连接": {
+        "median": 14.739,
+        "min": 14.218,
+        "max": 15.48,
+        "all": [
+          14.47,
+          14.218,
+          15.039,
+          15.48,
+          14.764,
+          14.34,
+          14.739
+        ],
+        "tree": "-> Nested loop inner join  (cost=115004 rows=3375)\n    -> Table scan on <subquery2>  (cost=2470..2514 rows=3375)\n        -> Materialize with deduplication  (cost=2470..2470 rows=3375)\n            -> Nested loop inner join  (cost=1692 rows=3375)\n                -> Covering index lookup on oi using ix_oi_pid_oid (product_id = 5)  (cost=379 rows=3750)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112152 rows=1)\n",
+        "rows": 2182
+      }
+    },
+    "96": {
+      "V1 IN 子查询": {
+        "median": 4.299,
+        "min": 4.056,
+        "max": 5.136,
+        "all": [
+          5.136,
+          4.166,
+          4.416,
+          4.307,
+          4.299,
+          4.197,
+          4.056
+        ],
+        "tree": "-> Nested loop inner join  (cost=112599 rows=526)\n    -> Table scan on <subquery2>  (cost=385..394 rows=526)\n        -> Materialize with deduplication  (cost=385..385 rows=526)\n            -> Nested loop inner join  (cost=264 rows=526)\n                -> Covering index lookup on oi using ix_oi_pid_cover (product_id = 96)  (cost=59.5 rows=584)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112152 rows=1)\n",
+        "rows": 502
+      },
+      "V2 JOIN + DISTINCT": {
+        "median": 4.474,
+        "min": 4.248,
+        "max": 5.143,
+        "all": [
+          5.136,
+          4.538,
+          5.143,
+          4.37,
+          4.248,
+          4.382,
+          4.474
+        ],
+        "tree": "-> Table scan on <temporary>  (cost=569..578 rows=526)\n    -> Temporary table with deduplication  (cost=569..569 rows=526)\n        -> Nested loop inner join  (cost=448 rows=526)\n            -> Nested loop inner join  (cost=264 rows=526)\n                -> Covering index lookup on oi using ix_oi_pid_cover (product_id = 96)  (cost=59.5 rows=584)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n            -> Single-row index lookup on c using PRIMARY (customer_id = o.customer_id)  (cost=0.25 rows=1)\n",
+        "rows": 502
+      },
+      "V3 EXISTS 半连接": {
+        "median": 4.198,
+        "min": 4.161,
+        "max": 4.605,
+        "all": [
+          4.328,
+          4.17,
+          4.605,
+          4.226,
+          4.198,
+          4.161,
+          4.166
+        ],
+        "tree": "-> Nested loop inner join  (cost=112599 rows=526)\n    -> Table scan on <subquery2>  (cost=385..394 rows=526)\n        -> Materialize with deduplication  (cost=385..385 rows=526)\n            -> Nested loop inner join  (cost=264 rows=526)\n                -> Covering index lookup on oi using ix_oi_pid_cover (product_id = 96)  (cost=59.5 rows=584)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=112152 rows=1)\n",
+        "rows": 502
+      }
+    },
+    "194": {
+      "V1 IN 子查询": {
+        "median": 3.164,
+        "min": 2.978,
+        "max": 3.602,
+        "all": [
+          3.164,
+          3.602,
+          3.258,
+          2.978,
+          2.995,
+          2.988,
+          3.292
+        ],
+        "tree": "-> Nested loop inner join  (cost=10403 rows=361)\n    -> Table scan on <subquery2>  (cost=265..272 rows=361)\n        -> Materialize with deduplication  (cost=265..265 rows=361)\n            -> Nested loop inner join  (cost=181 rows=361)\n                -> Covering index lookup on oi using ix_oi_pid_cover (product_id = 194)  (cost=41 rows=401)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=10096 rows=1)\n",
+        "rows": 340
+      },
+      "V2 JOIN + DISTINCT": {
+        "median": 3.443,
+        "min": 3.101,
+        "max": 3.636,
+        "all": [
+          3.318,
+          3.443,
+          3.169,
+          3.489,
+          3.101,
+          3.636,
+          3.521
+        ],
+        "tree": "-> Table scan on <temporary>  (cost=391..398 rows=361)\n    -> Temporary table with deduplication  (cost=391..391 rows=361)\n        -> Nested loop inner join  (cost=308 rows=361)\n            -> Nested loop inner join  (cost=181 rows=361)\n                -> Covering index lookup on oi using ix_oi_pid_cover (product_id = 194)  (cost=41 rows=401)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n            -> Single-row index lookup on c using PRIMARY (customer_id = o.customer_id)  (cost=0.25 rows=1)\n",
+        "rows": 340
+      },
+      "V3 EXISTS 半连接": {
+        "median": 3.281,
+        "min": 2.816,
+        "max": 3.558,
+        "all": [
+          3.558,
+          2.816,
+          3.281,
+          2.847,
+          3.384,
+          2.841,
+          3.377
+        ],
+        "tree": "-> Nested loop inner join  (cost=10403 rows=361)\n    -> Table scan on <subquery2>  (cost=265..272 rows=361)\n        -> Materialize with deduplication  (cost=265..265 rows=361)\n            -> Nested loop inner join  (cost=181 rows=361)\n                -> Covering index lookup on oi using ix_oi_pid_cover (product_id = 194)  (cost=41 rows=401)\n                -> Filter: (o.order_status <> 'cancelled')  (cost=0.25 rows=0.9)\n                    -> Single-row index lookup on o using PRIMARY (order_id = oi.order_id)  (cost=0.25 rows=1)\n    -> Single-row index lookup on c using PRIMARY (customer_id = `<subquery2>`.customer_id)  (cost=10096 rows=1)\n",
+        "rows": 340
+      }
+    }
+  }
+}

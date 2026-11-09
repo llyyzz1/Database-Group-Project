@@ -1,0 +1,319 @@
+﻿-- ============================================================================
+-- 00_build_experiment_database.sql
+--   One-click: create the database + tables + generate the scaled dataset
+--   (50,000 orders / ~150,000 order lines)
+-- ============================================================================
+-- Purpose: prepare the whole experiment environment in MySQL Workbench by
+--          opening this file and executing it once. It takes about 10 seconds and
+--          prints a self-check table at the end.
+--
+-- Prerequisites:
+--   1) The MySQL service is running (Windows service name: MySQL)
+--   2) You have permission to create a database
+--   3) If fresh_delivery already holds the submission sample data, this script
+--      deletes it first, because the sample data and the scaled data cannot
+--      coexist (their primary keys collide)
+--
+-- Note: this script only touches the dedicated experiment database fresh_delivery.
+--       It does NOT touch group_project or any other database.
+-- ============================================================================
+
+-- MySQL Workbench enables Safe Updates by default (SQL_SAFE_UPDATES = 1), which
+-- blocks UPDATE statements with no WHERE clause. This script contains two such
+-- UPDATEs (computing the day offset for _rnd, and back-filling orders.total_amount),
+-- so without the line below they fail with Error Code 1175.
+-- The setting only affects the current connection session.
+SET SQL_SAFE_UPDATES = 0;
+
+DROP DATABASE IF EXISTS fresh_delivery;
+CREATE DATABASE fresh_delivery DEFAULT CHARSET=utf8mb4;
+USE fresh_delivery;
+
+-- ====================== Part 1: table creation (01_schema.sql) ======================
+
+SET FOREIGN_KEY_CHECKS=0;
+DROP TABLE IF EXISTS order_item;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS product;
+DROP TABLE IF EXISTS rider;
+DROP TABLE IF EXISTS customer;
+DROP TABLE IF EXISTS store;
+SET FOREIGN_KEY_CHECKS=1;
+
+CREATE TABLE store (
+ store_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ store_name VARCHAR(60) NOT NULL,
+ address VARCHAR(200) NOT NULL,
+ phone VARCHAR(20) NOT NULL,
+ 
+ CONSTRAINT uq_store_phone UNIQUE(phone)
+) ENGINE=InnoDB;
+
+CREATE TABLE product (
+ product_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ store_id INT UNSIGNED NOT NULL,
+ product_name VARCHAR(80) NOT NULL,
+ price DECIMAL(8,2) NOT NULL,
+ stock_quantity INT NOT NULL,
+ 
+ CONSTRAINT ck_product_price CHECK(price>=0),
+ CONSTRAINT ck_product_stock CHECK(stock_quantity>=0),
+ CONSTRAINT fk_product_store FOREIGN KEY(store_id) REFERENCES store(store_id)
+   ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE customer (
+ customer_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ customer_name VARCHAR(40) NOT NULL,
+ phone VARCHAR(20) NOT NULL,
+ default_address VARCHAR(200) NOT NULL,
+ 
+ CONSTRAINT uq_customer_phone UNIQUE(phone)
+) ENGINE=InnoDB;
+
+CREATE TABLE rider (
+ rider_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ rider_name VARCHAR(40) NOT NULL,
+ phone VARCHAR(20) NOT NULL,
+ 
+ CONSTRAINT uq_rider_phone UNIQUE(phone)
+) ENGINE=InnoDB;
+
+CREATE TABLE orders (
+ order_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ store_id INT UNSIGNED NOT NULL,
+ customer_id INT UNSIGNED NOT NULL,
+ rider_id INT UNSIGNED NULL,
+ order_time DATETIME NOT NULL,
+ total_amount DECIMAL(10,2) NOT NULL,
+ delivery_address VARCHAR(200) NOT NULL,
+ delivery_date DATE NOT NULL,
+ order_status VARCHAR(20) NOT NULL,
+
+ CONSTRAINT ck_order_total CHECK(total_amount>=0),
+ CONSTRAINT ck_order_status CHECK(order_status IN('pending','delivering','completed','cancelled')),
+ CONSTRAINT fk_order_store FOREIGN KEY(store_id) REFERENCES store(store_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+ CONSTRAINT fk_order_customer FOREIGN KEY(customer_id) REFERENCES customer(customer_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+ CONSTRAINT fk_order_rider FOREIGN KEY(rider_id) REFERENCES rider(rider_id) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE order_item (
+ order_id INT UNSIGNED NOT NULL,
+ product_id INT UNSIGNED NOT NULL,
+ quantity INT NOT NULL,
+ unit_price DECIMAL(8,2) NOT NULL,
+ 
+ CONSTRAINT pk_order_item PRIMARY KEY(order_id,product_id),
+ CONSTRAINT ck_item_quantity CHECK(quantity>0),
+ CONSTRAINT ck_item_unit_price CHECK(unit_price>=0),
+ CONSTRAINT fk_item_order FOREIGN KEY(order_id) REFERENCES orders(order_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+ CONSTRAINT fk_item_product FOREIGN KEY(product_id) REFERENCES product(product_id) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE=InnoDB;
+
+-- ====================== Part 2: generate the scaled dataset (03_experiment_data.sql) ======================
+
+SET SESSION cte_max_recursion_depth = 1000000;
+
+-- MySQL Workbench enables Safe Updates by default (SQL_SAFE_UPDATES = 1), which
+-- blocks UPDATE statements with no WHERE clause. This script contains two such
+-- UPDATEs, so without the line below they fail with Error 1175.
+-- This setting only affects the current connection session; it does not change
+-- any Workbench preference permanently.
+SET SQL_SAFE_UPDATES = 0;
+
+-- ---------- 1) Numbers table 1..100000 (cross join, about 0.5 s) ----------
+DROP TABLE IF EXISTS _nums;
+CREATE TABLE _nums (n INT PRIMARY KEY);
+INSERT INTO _nums (n)
+WITH RECURSIVE seq(n) AS (SELECT 0 UNION ALL SELECT n+1 FROM seq WHERE n < 9),
+d AS (SELECT a.n + 10*b.n + 100*c.n + 1000*d.n + 10000*e.n AS n
+      FROM seq a, seq b, seq c, seq d, seq e)
+SELECT n + 1 FROM d;
+
+-- ---------- 2) Deterministic pseudo-random table (derived from SHA2) ----------
+-- r1..r4      : raw 32-bit hash values, used for modulo (e.g. r3 % 100 < 15)
+-- u1/u2/u4/u5 : the same values normalised to [0,1), used for weighted sampling
+-- d           : number of days between the order and today (recency weighted)
+--
+-- Two implementation details, both of which we actually hit while building this:
+--   1. Pseudo-random values come from SHA2(..., 256), never RAND(), so the dataset
+--      is byte-identical on every run.
+--      This differs from the MySQL 8.0 idiom and is a version difference worth
+--      noting in the report.
+--   2. Weighting always uses MULTIPLICATION (u * u) rather than POW(u, 2.0).
+--      For a base close to 1, POW overshoots 1 slightly because of exp/log
+--      rounding, which pushed FLOOR out of range (4 rows produced store_id = 21
+--      and immediately broke the foreign key). Multiplication plus a LEAST()
+--      guard avoids this.
+DROP TABLE IF EXISTS _rnd;
+CREATE TABLE _rnd (
+  n  INT PRIMARY KEY,
+  r1 BIGINT UNSIGNED, r2 BIGINT UNSIGNED, r3 BIGINT UNSIGNED, r4 BIGINT UNSIGNED,
+  u1 DOUBLE, u2 DOUBLE, u4 DOUBLE, u5 DOUBLE,
+  d  INT
+);
+INSERT INTO _rnd (n, r1, r2, r3, r4, u1, u2, u4, u5, d)
+SELECT n, h1, h2, h3, h4,
+       h1 / 4294967296.0, h2 / 4294967296.0, h4 / 4294967296.0, h5 / 4294967296.0,
+       0
+FROM (
+  SELECT n,
+    CAST(CONV(SUBSTR(SHA2(CONCAT('store-', n), 256), 1, 8), 16, 10) AS UNSIGNED) AS h1,
+    CAST(CONV(SUBSTR(SHA2(CONCAT('cust-',  n), 256), 1, 8), 16, 10) AS UNSIGNED) AS h2,
+    CAST(CONV(SUBSTR(SHA2(CONCAT('rider-', n), 256), 1, 8), 16, 10) AS UNSIGNED) AS h3,
+    CAST(CONV(SUBSTR(SHA2(CONCAT('hour-',  n), 256), 1, 8), 16, 10) AS UNSIGNED) AS h4,
+    CAST(CONV(SUBSTR(SHA2(CONCAT('day-',   n), 256), 1, 8), 16, 10) AS UNSIGNED) AS h5
+  FROM _nums WHERE n <= 50000
+) h;
+
+UPDATE _rnd SET d = LEAST(179, FLOOR(180 * u5 * u5));
+
+-- ---------- 3) 20 stores ----------
+INSERT INTO store (store_id, store_name, address, phone)
+SELECT n,
+       CONCAT('Community Fresh Store ', LPAD(n, 2, '0')),
+       CONCAT(1 + (n*37) % 200, ' ',
+              ELT(1 + (n % 5), 'Queen', 'Main', 'Harbour', 'Oak', 'Pine'),
+              ' Road, Hong Kong'),
+       CONCAT('852-28', LPAD(n, 6, '0'))
+FROM _nums WHERE n <= 20;
+
+-- ---------- 4) 200 products (10 per store) ----------
+INSERT INTO product (product_id, store_id, product_name, price, stock_quantity)
+SELECT n,
+       1 + FLOOR((n - 1) / 10),
+       CONCAT(ELT(1 + (n % 8), 'Fresh', 'Organic', 'Local', 'Premium', 'Farm', 'Daily', 'Green', 'Golden'),
+              ' ', ELT(1 + (n % 7), 'Milk', 'Apple', 'Lettuce', 'Eggs', 'Rice', 'Tofu', 'Spinach'),
+              ' ', ELT(1 + (n % 4), '1L', '500g', '1kg', '200g')),
+       ROUND(5 + (n * 17 % 900) / 10, 2),
+       10 + (n * 29 % 190)
+FROM _nums WHERE n <= 200;
+
+-- ---------- 5) 5000 customers ----------
+INSERT INTO customer (customer_id, customer_name, phone, default_address)
+SELECT n,
+       CONCAT(ELT(1 + (n % 6), 'Chan', 'Wong', 'Lee', 'Ho', 'Lau', 'Tam'), ' ',
+              ELT(1 + (n % 5), 'Mei', 'Ho', 'Yan', 'Ka Wai', 'Sze'), ' ', LPAD(n, 3, '0')),
+       CONCAT('852-61', LPAD(n, 6, '0')),
+       CONCAT('Flat ', 1 + (n % 40), ELT(1 + (n % 4), 'A', 'B', 'C', 'D'),
+              ', ', 1 + (n % 60), ' ',
+              ELT(1 + (n % 5), 'Oak', 'Park', 'River', 'Hill', 'Garden'), ' Road, Hong Kong')
+FROM _nums WHERE n <= 5000;
+
+-- ---------- 6) 200 riders ----------
+INSERT INTO rider (rider_id, rider_name, phone)
+SELECT n,
+       CONCAT(ELT(1 + (n % 6), 'Peter', 'Amy', 'David', 'Grace', 'Ken', 'Ivy'), ' ',
+              ELT(1 + (n % 5), 'Lam', 'Cheung', 'Ho', 'Wong', 'Chan'), ' ', LPAD(n, 3, '0')),
+       CONCAT('852-62', LPAD(n, 6, '0'))
+FROM _nums WHERE n <= 200;
+
+-- ---------- 7) 50,000 orders ----------
+-- store   : head-heavy (squaring the uniform value makes low-numbered stores
+--           receive noticeably more orders)
+-- customer: only 1..4500 order, so 4501..5000 stay at zero orders; squaring also
+--           concentrates repeat purchases
+-- rider   : 15% unassigned (NULL); skewing the rider number leaves 181..200 idle
+-- time    : last 180 days, weighted towards recent days; delivery hour 07:00-20:59
+-- status  : correlates with order age (older orders mostly completed, recent ones
+--           mostly still to be delivered)
+INSERT INTO orders (order_id, store_id, customer_id, rider_id, order_time,
+                    total_amount, delivery_address, delivery_date, order_status)
+SELECT n,
+       1 + LEAST(19,   FLOOR(20   * u1 * u1)),          -- store: head-heavy
+       1 + LEAST(4499, FLOOR(4500 * u2 * u2)),          -- customer: only 1..4500 order
+       CASE WHEN r3 % 100 < 15 THEN NULL                 -- 15% not yet assigned a rider
+            ELSE 1 + LEAST(179, FLOOR(180 * POW(u4, 1.5))) END,
+       NOW() - INTERVAL d DAY + INTERVAL (7 + r4 % 14) HOUR,
+       0,
+       CONCAT('Flat ', 1 + (n % 40), ELT(1 + (n % 4), 'A', 'B', 'C', 'D'),
+              ', ', 1 + (n % 60), ' ',
+              ELT(1 + (n % 5), 'Oak', 'Park', 'River', 'Hill', 'Garden'), ' Road, Hong Kong'),
+       CURDATE() - INTERVAL d DAY + INTERVAL 1 DAY,
+       CASE
+         WHEN d >= 3 THEN ELT(1 + (r1 % 20),
+              'completed','completed','completed','completed','completed','completed','completed','completed',
+              'completed','completed','completed','completed','completed','completed','completed','completed',
+              'completed','completed','cancelled','delivering')
+         WHEN d >= 1 THEN ELT(1 + (r1 % 10),
+              'completed','completed','completed','completed','completed',
+              'delivering','delivering','delivering','cancelled','completed')
+         ELSE ELT(1 + (r1 % 10),
+              'pending','pending','pending','pending','pending','pending','pending',
+              'delivering','delivering','delivering')
+       END
+FROM _rnd;
+
+-- ---------- 8) ~150,000 order lines (1-5 per order, 3 on average) ----------
+-- Product index = 1 + ((h + (kk-1) * 2) % 9):
+--   * the stride of 2 with at most 5 values of kk guarantees no product repeats
+--     within one order, so the composite primary key is never violated
+--   * the index ranges over 1..9, so the 10th product of every store is never sold
+--   * the product is derived from the order's store_id, so it always matches
+DROP TEMPORARY TABLE IF EXISTS _kk;
+CREATE TEMPORARY TABLE _kk (kk INT PRIMARY KEY);
+INSERT INTO _kk VALUES (1),(2),(3),(4),(5);
+
+INSERT INTO order_item (order_id, product_id, quantity, unit_price)
+SELECT t.order_id, t.product_id, t.quantity, p.price
+FROM (
+  SELECT o.order_id,
+         (o.store_id - 1) * 10 + 1
+           + (CAST(CONV(SUBSTR(SHA2(CONCAT('item-', o.order_id), 256), 1, 8), 16, 10) AS UNSIGNED)
+              + (k.kk - 1) * 2) % 9                                   AS product_id,
+         1 + CAST(CONV(SUBSTR(SHA2(CONCAT('qty-', o.order_id, '-', k.kk), 256), 1, 8), 16, 10) AS UNSIGNED) % 4
+                                                                      AS quantity
+  FROM orders o
+  JOIN _kk k
+  JOIN _rnd ro ON ro.n = o.order_id
+  WHERE k.kk <= 1 + (ro.r2 % 5)
+) t
+JOIN product p ON p.product_id = t.product_id;
+
+-- ---------- 9) Back-fill order totals so they match the sum of the lines ----------
+-- (This step is required. Without it the "recorded total vs calculated total"
+--  consistency check would report a mismatch on every single order.)
+
+UPDATE orders o
+JOIN (SELECT order_id, SUM(quantity * unit_price) AS s
+      FROM order_item GROUP BY order_id) x
+  ON x.order_id = o.order_id
+SET o.total_amount = x.s;
+
+-- ---------- 10) Drop the helper tables, keeping only the 6 business tables ----------
+DROP TABLE _nums;
+DROP TABLE _rnd;
+DROP TEMPORARY TABLE _kk;
+
+-- ---------- 11) Refresh statistics (otherwise EXPLAIN's row estimates mislead) ----------
+ANALYZE TABLE store, product, customer, rider, orders, order_item;
+
+-- ---------- 12) Self-check on the generated result ----------
+SELECT 'orders'                  AS metric, COUNT(*) AS value FROM orders
+UNION ALL SELECT 'order_items',              COUNT(*) FROM order_item
+UNION ALL SELECT 'zero-order customers',     COUNT(*) FROM customer c
+          WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id)
+UNION ALL SELECT 'zero-delivery riders',     COUNT(*) FROM rider r
+          WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.rider_id = r.rider_id)
+UNION ALL SELECT 'never-sold products',      COUNT(*) FROM product p
+          WHERE NOT EXISTS (SELECT 1 FROM order_item oi WHERE oi.product_id = p.product_id)
+UNION ALL SELECT 'orders without a rider',   COUNT(*) FROM orders WHERE rider_id IS NULL
+UNION ALL SELECT 'cancelled orders',         COUNT(*) FROM orders WHERE order_status = 'cancelled'
+UNION ALL SELECT 'total mismatches',         COUNT(*) FROM (
+            SELECT o.order_id FROM orders o JOIN order_item oi ON oi.order_id = o.order_id
+            GROUP BY o.order_id, o.total_amount
+            HAVING ABS(o.total_amount - SUM(oi.quantity * oi.unit_price)) > 0.001) z;
+
+-- ============================================================================
+-- Done. You should see a self-check table at the end, approximately:
+--   orders = 50000              order_items ~ 150152
+--   zero-order customers ~ 512  zero-delivery riders = 20   never-sold products = 20
+--   orders without a rider ~ 7507   cancelled orders ~ 2431   total mismatches = 0
+--
+-- The important line is "total mismatches = 0": it means orders.total_amount agrees
+-- exactly with the sum of the order lines, which is what makes the
+-- "recorded total vs calculated total" consistency check meaningful.
+--
+-- Next step: measure the baseline (structure A). 01_schema.sql already creates the
+-- 14 indexes, so nothing else is needed.
+-- ============================================================================
